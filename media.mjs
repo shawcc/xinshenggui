@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 
 function getFfmpegBin() {
-  return process.env.FFMPEG_PATH || "ffmpeg";
+  return process.env.FFMPEG_PATH || ffmpegPath || "ffmpeg";
 }
 
 function getFfprobeBin() {
-  return process.env.FFPROBE_PATH || "ffprobe";
+  return process.env.FFPROBE_PATH || ffprobeStatic.path || "ffprobe";
 }
 
 export function run(command, args, options = {}) {

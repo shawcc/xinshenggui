@@ -34,7 +34,14 @@ run("uv", [
   environment,
 ]);
 
-const torchArgs = ["pip", "install", "--python", python, "torch"];
+const torchArgs = [
+  "pip",
+  "install",
+  "--python",
+  python,
+  "torch==2.2.2",
+  "torchaudio==2.2.2",
+];
 const customIndex = process.env.DEMUCS_TORCH_INDEX;
 
 if (customIndex && customIndex !== "default") {
@@ -44,7 +51,14 @@ if (customIndex && customIndex !== "default") {
 }
 
 run("uv", torchArgs);
-run("uv", ["pip", "install", "--python", python, "demucs", "numpy"]);
+run("uv", [
+  "pip",
+  "install",
+  "--python",
+  python,
+  "demucs==4.0.1",
+  "numpy<2",
+]);
 
 fs.writeFileSync(
   manifestPath,

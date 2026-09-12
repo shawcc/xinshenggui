@@ -63,7 +63,7 @@ export async function extractPrimaryAudio(videoPath, audioPath) {
 }
 
 export function getSeparatedBackgroundPath(workDir) {
-  return path.join(workDir, "htdemucs", "minus_vocals.wav");
+  return path.join(workDir, "htdemucs", "no_vocals.wav");
 }
 
 export async function separateBackground(audioPath, workDir) {
@@ -79,8 +79,6 @@ export async function separateBackground(audioPath, workDir) {
     "htdemucs",
     "--two-stems",
     "vocals",
-    "--other-method",
-    "minus",
     "--shifts",
     "0",
     "-d",
