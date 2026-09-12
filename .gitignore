@@ -16,6 +16,8 @@ storage/test-demucs-input.wav
 storage/test-demucs-work/
 storage/test-mixed-output.mkv
 storage/test-output.mkv
+storage/test-subtitle-output.mkv
+storage/test-zh.srt
 screenshots/
 dist/
 core.*
