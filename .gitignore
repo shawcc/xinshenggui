@@ -1,4 +1,6 @@
 node_modules/
+.trae/
+.uploads/
 .venv-demucs/
 storage/uploads/
 storage/outputs/
