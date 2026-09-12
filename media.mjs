@@ -6,7 +6,7 @@ export function getFfmpegBin() {
   return process.env.FFMPEG_PATH || ffmpegPath || "ffmpeg";
 }
 
-function getFfprobeBin() {
+export function getFfprobeBin() {
   return process.env.FFPROBE_PATH || ffprobeStatic.path || "ffprobe";
 }
 

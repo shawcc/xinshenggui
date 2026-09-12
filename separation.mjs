@@ -2,7 +2,7 @@ import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getFfmpegBin, run } from "./media.mjs";
+import { getFfmpegBin, getFfprobeBin, run } from "./media.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const demucsRoot = process.env.DEMUCS_ROOT || __dirname;
@@ -68,6 +68,7 @@ export function getSeparatedBackgroundPath(workDir) {
 
 function getDemucsEnvironment(runtime) {
   const ffmpegDir = path.dirname(getFfmpegBin());
+  const ffprobeDir = path.dirname(getFfprobeBin());
   return {
     ...process.env,
     ...(runtime
@@ -76,7 +77,9 @@ function getDemucsEnvironment(runtime) {
           PYTHONPATH: runtime.sitePackages,
         }
       : {}),
-    PATH: [ffmpegDir, process.env.PATH].filter(Boolean).join(path.delimiter),
+    PATH: [ffmpegDir, ffprobeDir, process.env.PATH]
+      .filter(Boolean)
+      .join(path.delimiter),
   };
 }
 
