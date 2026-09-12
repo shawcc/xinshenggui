@@ -125,7 +125,13 @@
 
             <div class="provider-note" id="runtime-note">
               <span class="note-mark">AI</span>
-              <p><strong>正在检查本地处理环境</strong><br /><span id="runtime-detail">清晰分离全程在这台电脑完成，不上传视频。</span></p>
+              <div class="runtime-copy">
+                <p><strong>正在检查本地处理环境</strong><br /><span id="runtime-detail">清晰分离全程在这台电脑完成，不上传视频。</span></p>
+                <div class="runtime-progress" id="runtime-progress" hidden>
+                  <progress id="runtime-progress-bar" max="100" value="0"></progress>
+                  <span id="runtime-progress-label"></span>
+                </div>
+              </div>
             </div>
 
             <label class="audio-picker">

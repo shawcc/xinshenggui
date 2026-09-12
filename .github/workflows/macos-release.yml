@@ -66,6 +66,15 @@ jobs:
           mv "$RUNNER_TEMP/demucs-bundle"/.python-demucs .
           mv "$RUNNER_TEMP/demucs-bundle"/.venv-demucs .
 
+      - name: Prepare lightweight installer
+        run: |
+          mkdir -p runtime-tools
+          cp "$(command -v uv)" runtime-tools/uv
+          chmod +x runtime-tools/uv
+          find node_modules/ffprobe-static/bin -type f \
+            ! -path "*/darwin/${{ matrix.arch }}/ffprobe" -delete
+          rm -rf .demucs-runtime.json .python-demucs .venv-demucs
+
       - name: Build DMG
         run: |
           if [[ -z "${CSC_LINK:-}" ]]; then

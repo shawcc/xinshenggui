@@ -1,6 +1,6 @@
 {
   "name": "xinshenggui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "本地视频音轨制作与封装工具",
   "private": true,
   "packageManager": "pnpm@10.5.2",
@@ -36,25 +36,17 @@
     ],
     "extraResources": [
       {
-        "from": ".venv-demucs",
-        "to": ".venv-demucs",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": ".python-demucs",
-        "to": ".python-demucs",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": ".demucs-runtime.json",
-        "to": ".demucs-runtime.json"
+        "from": "runtime-tools",
+        "to": "runtime-tools"
       }
     ],
     "files": [
+      "!.demucs-runtime.json",
+      "!.python-demucs/**",
+      "!.venv-demucs/**",
+      "!.pnpm-store/**",
+      "!runtime-tools/**",
+      "!dist/**",
       "!storage/**",
       "!screenshots/**",
       "!**/*.test.mjs"

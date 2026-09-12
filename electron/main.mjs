@@ -41,7 +41,10 @@ function createWindow(port) {
 app.whenReady().then(async () => {
   const dataPath = app.getPath("userData");
   process.env.APP_DATA_PATH = dataPath;
-  process.env.DEMUCS_ROOT = app.isPackaged ? process.resourcesPath : projectRoot;
+  process.env.DEMUCS_ROOT = path.join(dataPath, "demucs-runtime");
+  process.env.UV_PATH = app.isPackaged
+    ? path.join(process.resourcesPath, "runtime-tools", "uv")
+    : "uv";
   process.env.FFMPEG_PATH = getExecutablePath(ffmpegPath);
   process.env.FFPROBE_PATH = getExecutablePath(ffprobeStatic.path);
 

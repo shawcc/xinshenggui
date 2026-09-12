@@ -10,8 +10,10 @@ import {
   isDemucsAvailable,
   separateBackground,
 } from "./separation.mjs";
+import { setupDemucs } from "./scripts/setup-demucs.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const demucsRoot = process.env.DEMUCS_ROOT || __dirname;
 const storageDir = process.env.APP_DATA_PATH
   ? path.join(process.env.APP_DATA_PATH, "storage")
   : path.join(__dirname, "storage");
@@ -31,17 +33,81 @@ const upload = multer({
 });
 const app = express();
 const projects = new Map();
+const demucsInstallState = {
+  status: "idle",
+  progress: 0,
+  message: "",
+};
+let demucsInstallPromise = null;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/health", async (_request, response) => {
+  const demucs = await isDemucsAvailable();
   response.json({
     ok: true,
     ffmpeg: true,
-    demucs: await isDemucsAvailable(),
+    demucs,
+    demucsInstall: demucs
+      ? { status: "ready", progress: 100, message: "清晰分离组件已就绪" }
+      : demucsInstallState,
     access: process.env.HOST === "0.0.0.0" ? "lan" : "local",
   });
+});
+
+app.post("/api/runtime/demucs/install", async (_request, response) => {
+  if (await isDemucsAvailable()) {
+    response.json({
+      demucs: true,
+      status: "ready",
+      progress: 100,
+      message: "清晰分离组件已就绪",
+    });
+    return;
+  }
+
+  if (!demucsInstallPromise) {
+    demucsInstallPromise = setupDemucs({
+      root: demucsRoot,
+      uvBin: process.env.UV_PATH || "uv",
+      onProgress(progress, message) {
+        Object.assign(demucsInstallState, {
+          status: "installing",
+          progress,
+          message,
+        });
+      },
+    })
+      .then(() => {
+        Object.assign(demucsInstallState, {
+          status: "ready",
+          progress: 100,
+          message: "清晰分离组件已就绪",
+        });
+      })
+      .catch((error) => {
+        Object.assign(demucsInstallState, {
+          status: "failed",
+          progress: 0,
+          message: "组件下载失败，可以重新尝试",
+        });
+        throw error;
+      })
+      .finally(() => {
+        demucsInstallPromise = null;
+      });
+  }
+
+  try {
+    await demucsInstallPromise;
+    response.json({ demucs: true, ...demucsInstallState });
+  } catch (error) {
+    response.status(502).json({
+      error: "清晰分离组件下载失败，请检查网络后重试。",
+      detail: error.message,
+    });
+  }
 });
 
 app.post("/api/projects", upload.single("video"), async (request, response) => {

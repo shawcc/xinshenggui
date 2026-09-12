@@ -2,6 +2,8 @@ const state = {
   videoFile: null,
   audioFile: null,
   project: null,
+  demucsReady: false,
+  installingDemucs: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,7 +28,7 @@ audioInput.addEventListener("change", () => {
   $("#audio-label").textContent = state.audioFile
     ? state.audioFile.name
     : "选择配音文件";
-  packageButton.disabled = !state.audioFile;
+  updatePackageButton();
 });
 
 for (const eventName of ["dragenter", "dragover"]) {
@@ -89,16 +91,21 @@ packageForm.addEventListener("submit", async (event) => {
 
   const formData = new FormData(packageForm);
   const isSeparating = formData.get("mixMode") === "separate";
-  setLoading(
-    packageButton,
-    true,
-    isSeparating ? "正在分离背景声，可能需要几分钟" : "正在混音",
-  );
-  const body = new FormData();
-  body.append("audio", state.audioFile);
-  body.append("mixMode", formData.get("mixMode"));
 
   try {
+    if (isSeparating && !state.demucsReady) {
+      setLoading(packageButton, true, "正在准备清晰分离组件");
+      await installDemucs();
+    }
+
+    setLoading(
+      packageButton,
+      true,
+      isSeparating ? "正在分离背景声，可能需要几分钟" : "正在混音",
+    );
+    const body = new FormData();
+    body.append("audio", state.audioFile);
+    body.append("mixMode", formData.get("mixMode"));
     const response = await fetch(
       `/api/projects/${state.project.id}/package`,
       { method: "POST", body },
@@ -109,6 +116,7 @@ packageForm.addEventListener("submit", async (event) => {
     showToast(error.message);
   } finally {
     setLoading(packageButton, false, "混音并生成 MKV");
+    updatePackageButton();
   }
 });
 
@@ -116,24 +124,10 @@ async function loadCapabilities() {
   try {
     const response = await fetch("/api/health");
     const capabilities = await readResponse(response);
-    const demucsInput = $(
-      '#demucs-choice input[name="mixMode"][value="separate"]',
-    );
-    const note = $("#runtime-note");
     const badge = $("#access-badge");
 
-    if (capabilities.demucs) {
-      note.querySelector("strong").textContent = "Demucs 已就绪";
-      $("#runtime-detail").textContent =
-        "清晰分离全程在这台电脑完成，第一次使用会下载模型。";
-    } else {
-      demucsInput.disabled = true;
-      $('input[name="mixMode"][value="quick"]').checked = true;
-      $("#demucs-choice").classList.add("is-disabled");
-      note.querySelector("strong").textContent = "Demucs 尚未安装";
-      $("#runtime-detail").textContent =
-        "当前将使用快速混音；运行 npm run setup:demucs 可启用清晰分离。";
-    }
+    state.demucsReady = capabilities.demucs;
+    renderRuntimeState(capabilities.demucsInstall);
 
     if (capabilities.access === "lan") {
       badge.textContent = "局域网共享";
@@ -143,6 +137,74 @@ async function loadCapabilities() {
     $("#runtime-note").querySelector("strong").textContent =
       "未能确认本地处理环境";
   }
+}
+
+async function installDemucs() {
+  state.installingDemucs = true;
+  updatePackageButton();
+  renderRuntimeState({
+    status: "installing",
+    progress: 1,
+    message: "正在连接组件服务器",
+  });
+
+  const poller = setInterval(async () => {
+    try {
+      const response = await fetch("/api/health");
+      const capabilities = await readResponse(response);
+      if (!state.installingDemucs) return;
+      state.demucsReady = capabilities.demucs;
+      renderRuntimeState(capabilities.demucsInstall);
+    } catch {
+      // The install request remains authoritative while status polling retries.
+    }
+  }, 800);
+
+  try {
+    const response = await fetch("/api/runtime/demucs/install", {
+      method: "POST",
+    });
+    const result = await readResponse(response);
+    state.demucsReady = result.demucs;
+    renderRuntimeState(result);
+  } finally {
+    clearInterval(poller);
+    state.installingDemucs = false;
+    updatePackageButton();
+  }
+}
+
+function renderRuntimeState(runtime = {}) {
+  const note = $("#runtime-note");
+  const progress = $("#runtime-progress");
+  const progressBar = $("#runtime-progress-bar");
+  const progressLabel = $("#runtime-progress-label");
+
+  if (state.demucsReady || runtime.status === "ready") {
+    note.querySelector("strong").textContent = "清晰分离组件已就绪";
+    $("#runtime-detail").textContent =
+      "处理全程在这台电脑完成；首次分离时只需下载 AI 模型。";
+    progress.hidden = true;
+    return;
+  }
+
+  if (runtime.status === "installing") {
+    const value = Number(runtime.progress || 0);
+    note.querySelector("strong").textContent =
+      runtime.message || "正在准备清晰分离组件";
+    $("#runtime-detail").textContent =
+      "请保持应用打开，下载完成后会自动继续处理。";
+    progressBar.value = value;
+    progressLabel.textContent = `${value}%`;
+    progress.hidden = false;
+    return;
+  }
+
+  note.querySelector("strong").textContent =
+    runtime.status === "failed" ? "组件下载未完成" : "按需下载";
+  $("#runtime-detail").textContent =
+    "首次使用清晰分离时自动下载约 200 MB 组件，之后可以离线使用。";
+  progress.hidden = true;
 }
 
 function setVideo(file) {
@@ -201,7 +263,7 @@ function reset() {
   $("#video-file-row").hidden = true;
   $("#audio-label").textContent = "选择配音文件";
   analyzeButton.disabled = true;
-  packageButton.disabled = true;
+  updatePackageButton();
   videoForm.hidden = false;
   packageForm.hidden = true;
   successPanel.hidden = true;
@@ -221,6 +283,11 @@ function setLoading(button, loading, label) {
   button.classList.toggle("is-loading", loading);
   button.disabled = loading;
   button.querySelector("span").textContent = label;
+}
+
+function updatePackageButton() {
+  packageButton.disabled =
+    !state.project || !state.audioFile || state.installingDemucs;
 }
 
 function showToast(message) {
