@@ -2,8 +2,10 @@ const state = {
   videoFile: null,
   audioFile: null,
   project: null,
+  aiConfigured: false,
   demucsReady: false,
   installingDemucs: false,
+  processing: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -27,9 +29,26 @@ audioInput.addEventListener("change", () => {
   state.audioFile = audioInput.files[0] ?? null;
   $("#audio-label").textContent = state.audioFile
     ? state.audioFile.name
-    : "选择配音文件";
+    : "选择已有配音文件";
+  $("#clear-audio").hidden = !state.audioFile;
   updatePackageButton();
 });
+
+$("#clear-audio").addEventListener("click", () => {
+  state.audioFile = null;
+  audioInput.value = "";
+  $("#audio-label").textContent = "选择已有配音文件";
+  $("#clear-audio").hidden = true;
+  updatePackageButton();
+});
+
+$("#edit-ai-settings").addEventListener("click", () => {
+  $("#ai-config").hidden = false;
+  $("#edit-ai-settings").hidden = true;
+  $("#ai-api-key").focus();
+});
+
+$("#save-ai-settings").addEventListener("click", saveAiSettings);
 
 for (const eventName of ["dragenter", "dragover"]) {
   dropzone.addEventListener(eventName, (event) => {
@@ -87,38 +106,89 @@ videoForm.addEventListener("submit", async (event) => {
 
 packageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!state.project || !state.audioFile) return;
+  if (!state.project || state.processing) return;
 
   const formData = new FormData(packageForm);
   const isSeparating = formData.get("mixMode") === "separate";
 
   try {
+    state.processing = true;
+    updatePackageButton();
     if (isSeparating && !state.demucsReady) {
       setLoading(packageButton, true, "正在准备清晰分离组件");
       await installDemucs();
     }
 
-    setLoading(
-      packageButton,
-      true,
-      isSeparating ? "正在分离背景声，可能需要几分钟" : "正在混音",
-    );
-    const body = new FormData();
-    body.append("audio", state.audioFile);
-    body.append("mixMode", formData.get("mixMode"));
-    const response = await fetch(
-      `/api/projects/${state.project.id}/package`,
-      { method: "POST", body },
-    );
-    const result = await readResponse(response);
-    showSuccess(result);
+    if (state.audioFile) {
+      await packageExistingAudio(formData);
+    } else {
+      if (!state.aiConfigured) {
+        $("#ai-config").hidden = false;
+        $("#edit-ai-settings").hidden = true;
+        $("#ai-api-key").focus();
+        throw new Error("请先填写 API Key 并连接云端 AI。");
+      }
+      await generateAutomaticDub(formData);
+    }
   } catch (error) {
+    hideGenerationProgress();
     showToast(error.message);
   } finally {
-    setLoading(packageButton, false, "混音并生成 MKV");
+    state.processing = false;
+    setLoading(packageButton, false, packageButtonLabel());
     updatePackageButton();
   }
 });
+
+async function packageExistingAudio(formData) {
+  setLoading(packageButton, true, "正在混音并封装");
+  const body = new FormData();
+  body.append("audio", state.audioFile);
+  body.append("mixMode", formData.get("mixMode"));
+  const response = await fetch(
+    `/api/projects/${state.project.id}/package`,
+    { method: "POST", body },
+  );
+  showSuccess(await readResponse(response));
+}
+
+async function generateAutomaticDub(formData) {
+  renderGenerationProgress({
+    progress: 1,
+    message: "正在准备自动配音",
+  });
+  setLoading(packageButton, true, "正在自动生成中文配音");
+
+  const response = await fetch(
+    `/api/projects/${state.project.id}/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mixMode: formData.get("mixMode"),
+        voice: formData.get("voice"),
+      }),
+    },
+  );
+  await readResponse(response);
+
+  while (true) {
+    await delay(900);
+    const statusResponse = await fetch(
+      `/api/projects/${state.project.id}/status`,
+    );
+    const status = await readResponse(statusResponse);
+    renderGenerationProgress(status);
+
+    if (status.status === "ready") {
+      showSuccess(status);
+      return;
+    }
+    if (status.status === "failed") {
+      throw new Error(status.message || "自动配音失败，请稍后重试。");
+    }
+  }
+}
 
 async function loadCapabilities() {
   try {
@@ -127,7 +197,9 @@ async function loadCapabilities() {
     const badge = $("#access-badge");
 
     state.demucsReady = capabilities.demucs;
+    state.aiConfigured = capabilities.ai.configured;
     renderRuntimeState(capabilities.demucsInstall);
+    renderAiSettings(capabilities.ai);
 
     if (capabilities.access === "lan") {
       badge.textContent = "局域网共享";
@@ -137,6 +209,54 @@ async function loadCapabilities() {
     $("#runtime-note").querySelector("strong").textContent =
       "未能确认本地处理环境";
   }
+}
+
+async function saveAiSettings() {
+  const button = $("#save-ai-settings");
+  const apiKey = $("#ai-api-key").value.trim();
+  const baseUrl = $("#ai-base-url").value.trim();
+
+  if (!apiKey && !state.aiConfigured) {
+    showToast("请输入 AI 服务 API Key。");
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "正在保存";
+  try {
+    const response = await fetch("/api/settings/ai", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey, baseUrl }),
+    });
+    const settings = await readResponse(response);
+    state.aiConfigured = settings.configured;
+    $("#ai-api-key").value = "";
+    renderAiSettings(settings);
+    showToast("AI 服务设置已保存。");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存并连接";
+    updatePackageButton();
+  }
+}
+
+function renderAiSettings(settings = {}) {
+  const configured = Boolean(settings.configured);
+  $("#ai-base-url").value =
+    settings.baseUrl || "https://api.openai.com/v1";
+  $("#ai-service").classList.toggle("is-connected", configured);
+  $("#ai-service-title").textContent = configured
+    ? "云端 AI 已配置"
+    : "连接云端 AI";
+  $("#ai-service-detail").textContent = configured
+    ? new URL(settings.baseUrl).host
+    : "用于识别、翻译和生成中文语音";
+  $("#ai-config").hidden = configured;
+  $("#edit-ai-settings").hidden = !configured;
+  updatePackageButton();
 }
 
 async function installDemucs() {
@@ -153,10 +273,11 @@ async function installDemucs() {
       const response = await fetch("/api/health");
       const capabilities = await readResponse(response);
       if (!state.installingDemucs) return;
+
       state.demucsReady = capabilities.demucs;
       renderRuntimeState(capabilities.demucsInstall);
     } catch {
-      // The install request remains authoritative while status polling retries.
+      // The install request remains authoritative while polling retries.
     }
   }, 800);
 
@@ -183,7 +304,7 @@ function renderRuntimeState(runtime = {}) {
   if (state.demucsReady || runtime.status === "ready") {
     note.querySelector("strong").textContent = "清晰分离组件已就绪";
     $("#runtime-detail").textContent =
-      "处理全程在这台电脑完成；首次分离时只需下载 AI 模型。";
+      "背景声音处理全程在本机完成。";
     progress.hidden = true;
     return;
   }
@@ -207,9 +328,22 @@ function renderRuntimeState(runtime = {}) {
   progress.hidden = true;
 }
 
+function renderGenerationProgress(status = {}) {
+  const value = Math.max(0, Math.min(100, Number(status.progress || 0)));
+  $("#generation-progress").hidden = false;
+  $("#generation-message").textContent =
+    status.message || "正在自动生成中文配音";
+  $("#generation-percent").textContent = `${value}%`;
+  $("#generation-progress-bar").value = value;
+}
+
+function hideGenerationProgress() {
+  $("#generation-progress").hidden = true;
+}
+
 function setVideo(file) {
   state.videoFile = file;
-  videoInput.value = "";
+  if (!file) videoInput.value = "";
   analyzeButton.disabled = !file;
   $("#video-file-row").hidden = !file;
 
@@ -236,33 +370,41 @@ function showSettings(project) {
   details.push(`${project.media.audioTracks.length} 条原音轨`);
   $("#summary-meta").textContent = details.join(" · ");
   setStep(2);
+  updatePackageButton();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function showSuccess(result) {
+  hideGenerationProgress();
   packageForm.hidden = true;
   successPanel.hidden = false;
   $("#output-name").textContent = result.outputName;
-  $("#processing-result").textContent =
-    result.processing === "demucs"
-      ? "背景声已通过 Demucs 本地分离"
-      : result.processing === "quick"
-        ? "已使用快速混音"
-        : "视频没有原音轨，已使用纯中文配音";
+  $("#processing-result").textContent = processingLabel(result.processing);
   $("#download-button").href = result.downloadUrl;
   setStep(3);
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function processingLabel(processing) {
+  if (processing === "demucs-ai") return "已自动翻译配音，并分离原片背景声";
+  if (processing === "quick-ai") return "已自动翻译配音，并完成快速混音";
+  if (processing === "demucs") return "已使用现成配音，并分离原片背景声";
+  if (processing === "quick") return "已使用现成配音完成快速混音";
+  return "已生成中文配音音轨";
 }
 
 function reset() {
   state.videoFile = null;
   state.audioFile = null;
   state.project = null;
+  state.processing = false;
   videoInput.value = "";
   audioInput.value = "";
   $("#video-file-row").hidden = true;
-  $("#audio-label").textContent = "选择配音文件";
+  $("#audio-label").textContent = "选择已有配音文件";
+  $("#clear-audio").hidden = true;
   analyzeButton.disabled = true;
+  hideGenerationProgress();
   updatePackageButton();
   videoForm.hidden = false;
   packageForm.hidden = true;
@@ -285,9 +427,19 @@ function setLoading(button, loading, label) {
   button.querySelector("span").textContent = label;
 }
 
+function packageButtonLabel() {
+  return state.audioFile
+    ? "使用配音文件并生成 MKV"
+    : "自动生成中文配音";
+}
+
 function updatePackageButton() {
+  packageButton.querySelector("span").textContent = packageButtonLabel();
   packageButton.disabled =
-    !state.project || !state.audioFile || state.installingDemucs;
+    !state.project ||
+    state.installingDemucs ||
+    state.processing ||
+    (!state.audioFile && !state.aiConfigured);
 }
 
 function showToast(message) {
@@ -296,7 +448,7 @@ function showToast(message) {
   clearTimeout(showToast.timeout);
   showToast.timeout = setTimeout(() => {
     toast.hidden = true;
-  }, 4200);
+  }, 5200);
 }
 
 async function readResponse(response) {
@@ -305,6 +457,10 @@ async function readResponse(response) {
     throw new Error(result.error || "操作失败，请稍后重试。");
   }
   return result;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function formatBytes(bytes) {

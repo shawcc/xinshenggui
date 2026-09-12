@@ -21,6 +21,8 @@ const fixture = path.join(storageDir, "test-fixture.mkv");
 const dubFixture = path.join(storageDir, "test-dub.wav");
 const outputFixture = path.join(storageDir, "test-output.mkv");
 const mixedOutputFixture = path.join(storageDir, "test-mixed-output.mkv");
+const subtitleOutputFixture = path.join(storageDir, "test-subtitle-output.mkv");
+const subtitleFixture = path.join(storageDir, "test-zh.srt");
 const demucsAudioFixture = path.join(storageDir, "test-demucs-input.wav");
 const demucsWorkDir = path.join(storageDir, "test-demucs-work");
 
@@ -52,6 +54,10 @@ before(async () => {
     dubFixture,
   ]);
   await extractPrimaryAudio(fixture, demucsAudioFixture);
+  await fs.writeFile(
+    subtitleFixture,
+    "1\n00:00:00,000 --> 00:00:00,900\n测试字幕\n",
+  );
 });
 
 test("buildMuxArgs appends Chinese audio after original tracks", () => {
@@ -130,6 +136,22 @@ test("muxMixedDubbedTrack creates a mixed Chinese track", async () => {
   const media = await probeMedia(mixedOutputFixture);
   assert.equal(media.audioTracks.length, 2);
   assert.equal(media.audioTracks[1].codec, "aac");
+});
+
+test("muxDubbedTrack preserves original media and appends Chinese subtitles", async () => {
+  await muxDubbedTrack({
+    videoPath: fixture,
+    audioPath: dubFixture,
+    subtitlePath: subtitleFixture,
+    outputPath: subtitleOutputFixture,
+    originalAudioTracks: 1,
+    originalSubtitleTracks: 0,
+    duration: 1,
+  });
+
+  const media = await probeMedia(subtitleOutputFixture);
+  assert.equal(media.audioTracks.length, 2);
+  assert.equal(media.subtitleTracks.length, 1);
 });
 
 test(

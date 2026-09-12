@@ -9,6 +9,7 @@ runtime-tools/
 storage/uploads/
 storage/outputs/
 storage/work/
+storage/ai-settings.json
 storage/test-fixture.mkv
 storage/test-dub.wav
 storage/test-demucs-input.wav

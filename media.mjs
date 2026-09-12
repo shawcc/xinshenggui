@@ -59,6 +59,8 @@ export async function probeMedia(filePath) {
   const video = data.streams?.find((stream) => stream.codec_type === "video");
   const audioTracks =
     data.streams?.filter((stream) => stream.codec_type === "audio") ?? [];
+  const subtitleTracks =
+    data.streams?.filter((stream) => stream.codec_type === "subtitle") ?? [];
 
   return {
     duration: Number(data.format?.duration ?? 0),
@@ -74,6 +76,9 @@ export async function probeMedia(filePath) {
       codec: track.codec_name,
       channels: track.channels,
     })),
+    subtitleTracks: subtitleTracks.map((track) => ({
+      codec: track.codec_name,
+    })),
   };
 }
 
@@ -86,7 +91,7 @@ function trackDispositionArgs(originalAudioTracks, dubbedTrackIndex) {
   return args;
 }
 
-function dubbedTrackArgs({ dubbedTrackIndex, duration, outputPath }) {
+function dubbedTrackArgs({ dubbedTrackIndex, duration }) {
   return [
     "-c",
     "copy",
@@ -100,7 +105,15 @@ function dubbedTrackArgs({ dubbedTrackIndex, duration, outputPath }) {
     "title=中文配音",
     "-t",
     String(duration),
-    outputPath,
+  ];
+}
+
+function generatedSubtitleArgs(originalSubtitleTracks) {
+  return [
+    `-metadata:s:s:${originalSubtitleTracks}`,
+    "language=chi",
+    `-metadata:s:s:${originalSubtitleTracks}`,
+    "title=中文字幕",
   ];
 }
 
@@ -109,15 +122,20 @@ export function buildMuxArgs({
   audioPath,
   outputPath,
   originalAudioTracks,
+  originalSubtitleTracks = 0,
   duration,
+  subtitlePath,
 }) {
   const dubbedTrackIndex = originalAudioTracks;
-  return [
+  const args = [
     "-y",
     "-i",
     videoPath,
     "-i",
     audioPath,
+  ];
+  if (subtitlePath) args.push("-i", subtitlePath);
+  args.push(
     "-map",
     "0:v?",
     "-map",
@@ -126,9 +144,15 @@ export function buildMuxArgs({
     "0:s?",
     "-map",
     "1:a:0",
+  );
+  if (subtitlePath) args.push("-map", "2:s:0");
+  args.push(
     ...trackDispositionArgs(originalAudioTracks, dubbedTrackIndex),
-    ...dubbedTrackArgs({ dubbedTrackIndex, duration, outputPath }),
-  ];
+    ...dubbedTrackArgs({ dubbedTrackIndex, duration }),
+    ...(subtitlePath ? generatedSubtitleArgs(originalSubtitleTracks) : []),
+    outputPath,
+  );
+  return args;
 }
 
 export async function muxDubbedTrack(options) {
@@ -141,7 +165,9 @@ export function buildMixedMuxArgs({
   backgroundPath,
   outputPath,
   originalAudioTracks,
+  originalSubtitleTracks = 0,
   duration,
+  subtitlePath,
 }) {
   const dubbedTrackIndex = originalAudioTracks;
   const hasSeparatedBackground = Boolean(backgroundPath);
@@ -155,6 +181,8 @@ export function buildMixedMuxArgs({
 
   const backgroundInput = hasSeparatedBackground ? "1:a:0" : "0:a:0";
   const dubbedInput = hasSeparatedBackground ? "2:a:0" : "1:a:0";
+  const subtitleInput = hasSeparatedBackground ? 3 : 2;
+  if (subtitlePath) args.push("-i", subtitlePath);
   const backgroundVolume = hasSeparatedBackground ? "0.95" : "0.12";
   const filter = [
     `[${backgroundInput}]volume=${backgroundVolume}[background]`,
@@ -173,8 +201,13 @@ export function buildMixedMuxArgs({
     "0:s?",
     "-map",
     "[mixed]",
+  );
+  if (subtitlePath) args.push("-map", `${subtitleInput}:s:0`);
+  args.push(
     ...trackDispositionArgs(originalAudioTracks, dubbedTrackIndex),
-    ...dubbedTrackArgs({ dubbedTrackIndex, duration, outputPath }),
+    ...dubbedTrackArgs({ dubbedTrackIndex, duration }),
+    ...(subtitlePath ? generatedSubtitleArgs(originalSubtitleTracks) : []),
+    outputPath,
   );
 
   return args;

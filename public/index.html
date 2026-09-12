@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="为视频制作、混音并封装可切换的中文音轨。"
+      content="自动识别外语视频、翻译并生成可切换的中文配音音轨。"
     />
     <title>新声轨</title>
     <link rel="stylesheet" href="/styles.css" />
@@ -24,11 +24,11 @@
 
       <main>
         <section class="intro">
-          <p class="eyebrow">给视频加上一条新的声音</p>
-          <h1>画面保持不动，<br />声音换成你想要的版本。</h1>
+          <p class="eyebrow">从外语视频到中文配音</p>
+          <h1>放入视频，<br />自动生成中文声轨。</h1>
           <p class="intro-copy">
-            保留画面质量、原音轨和字幕；把配音与背景声混合后，
-            封装成可以切换播放的 MKV。
+            自动识别对白、翻译并合成中文语音；保留原画面、原音轨和字幕，
+            输出可以切换播放的 MKV。
           </p>
         </section>
 
@@ -37,7 +37,7 @@
             <span>01</span><strong>选择视频</strong>
           </li>
           <li data-step-indicator="2">
-            <span>02</span><strong>音轨设置</strong>
+            <span>02</span><strong>生成配音</strong>
           </li>
           <li data-step-indicator="3">
             <span>03</span><strong>封装音轨</strong>
@@ -86,7 +86,7 @@
             <div class="section-heading">
               <div>
                 <p class="section-kicker">第二步</p>
-                <h2>添加配音音轨</h2>
+                <h2>自动生成中文配音</h2>
               </div>
               <button class="text-button" id="change-video" type="button">更换视频</button>
             </div>
@@ -100,6 +100,63 @@
                 <p id="summary-meta"></p>
               </div>
             </div>
+
+            <section class="ai-service" id="ai-service">
+              <div class="ai-service-heading">
+                <div>
+                  <span class="service-dot" aria-hidden="true"></span>
+                  <strong id="ai-service-title">连接云端 AI</strong>
+                  <small id="ai-service-detail">用于识别、翻译和生成中文语音</small>
+                </div>
+                <button class="text-button" id="edit-ai-settings" type="button" hidden>更改</button>
+              </div>
+              <div class="ai-config" id="ai-config">
+                <label>
+                  <span>API Key</span>
+                  <input
+                    id="ai-api-key"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="sk-..."
+                  />
+                </label>
+                <label>
+                  <span>服务地址</span>
+                  <input
+                    id="ai-base-url"
+                    type="url"
+                    value="https://api.openai.com/v1"
+                    spellcheck="false"
+                  />
+                </label>
+                <button class="secondary-button" id="save-ai-settings" type="button">
+                  保存并连接
+                </button>
+                <p>支持 OpenAI API；密钥仅保存在这台电脑。</p>
+              </div>
+            </section>
+
+            <fieldset>
+              <legend>中文音色</legend>
+              <div class="segmented voice-options">
+                <label>
+                  <input type="radio" name="voice" value="coral" checked />
+                  <span>自然女声</span>
+                </label>
+                <label>
+                  <input type="radio" name="voice" value="alloy" />
+                  <span>清晰中性</span>
+                </label>
+                <label>
+                  <input type="radio" name="voice" value="sage" />
+                  <span>沉稳男声</span>
+                </label>
+                <label>
+                  <input type="radio" name="voice" value="verse" />
+                  <span>叙事男声</span>
+                </label>
+              </div>
+            </fieldset>
 
             <fieldset>
               <legend>背景声音处理</legend>
@@ -123,6 +180,14 @@
               </div>
             </fieldset>
 
+            <div class="provider-note cloud-note">
+              <span class="note-mark">云端</span>
+              <p>
+                自动配音会把压缩后的原片语音发送至你配置的 AI 服务；
+                视频画面、背景分离和最终封装仍在本机完成。
+              </p>
+            </div>
+
             <div class="provider-note" id="runtime-note">
               <span class="note-mark">AI</span>
               <div class="runtime-copy">
@@ -134,17 +199,32 @@
               </div>
             </div>
 
-            <label class="audio-picker">
-              <input id="audio-input" type="file" accept="audio/*,.m4a,.aac,.mp3,.wav,.flac" />
-              <span>
-                <strong id="audio-label">选择配音文件</strong>
-                <small>AAC、MP3、M4A、WAV</small>
-              </span>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
-            </label>
+            <div class="generation-progress" id="generation-progress" hidden>
+              <div>
+                <strong id="generation-message">正在准备自动配音</strong>
+                <span id="generation-percent">0%</span>
+              </div>
+              <progress id="generation-progress-bar" max="100" value="0"></progress>
+              <small>请保持应用打开，完成后会自动保存。</small>
+            </div>
+
+            <details class="manual-track">
+              <summary>高级选项：使用已有配音文件</summary>
+              <label class="audio-picker">
+                <input id="audio-input" type="file" accept="audio/*,.m4a,.aac,.mp3,.wav,.flac" />
+                <span>
+                  <strong id="audio-label">选择已有配音文件</strong>
+                  <small>AAC、MP3、M4A、WAV</small>
+                </span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
+              </label>
+              <button class="text-button clear-audio" id="clear-audio" type="button" hidden>
+                改回自动生成
+              </button>
+            </details>
 
             <button class="primary-button" id="package-button" type="submit" disabled>
-              <span>混音并生成 MKV</span>
+              <span>自动生成中文配音</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
             </button>
           </form>
@@ -154,11 +234,11 @@
               <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>
             </span>
             <p class="section-kicker">已经准备好</p>
-              <h2>新音轨已经装进去了</h2>
+              <h2>中文配音已经生成</h2>
             <p id="output-name"></p>
             <p class="processing-result" id="processing-result"></p>
             <a class="primary-button" id="download-button" href="#">
-              <span>下载双音轨视频</span>
+              <span>打开双音轨视频</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
             </a>
             <div class="next-step">

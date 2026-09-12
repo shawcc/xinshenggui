@@ -1,7 +1,7 @@
 {
   "name": "xinshenggui",
-  "version": "0.2.0",
-  "description": "本地视频音轨制作与封装工具",
+  "version": "0.3.0",
+  "description": "自动翻译并生成中文配音音轨的桌面工具",
   "private": true,
   "packageManager": "pnpm@10.5.2",
   "type": "module",

@@ -4,6 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import multer from "multer";
+import {
+  loadAiSettings,
+  saveAiSettings,
+  toPublicAiSettings,
+} from "./ai-settings.mjs";
+import { generateCloudDub } from "./cloud-dubbing.mjs";
 import { muxDubbedTrack, muxMixedDubbedTrack, probeMedia } from "./media.mjs";
 import {
   extractPrimaryAudio,
@@ -20,6 +26,7 @@ const storageDir = process.env.APP_DATA_PATH
 const uploadDir = path.join(storageDir, "uploads");
 const outputDir = path.join(storageDir, "outputs");
 const workDir = path.join(storageDir, "work");
+const settingsRoot = process.env.APP_DATA_PATH || storageDir;
 
 await Promise.all([
   fs.mkdir(uploadDir, { recursive: true }),
@@ -44,7 +51,10 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/health", async (_request, response) => {
-  const demucs = await isDemucsAvailable();
+  const [demucs, aiSettings] = await Promise.all([
+    isDemucsAvailable(),
+    loadAiSettings(settingsRoot),
+  ]);
   response.json({
     ok: true,
     ffmpeg: true,
@@ -52,8 +62,22 @@ app.get("/api/health", async (_request, response) => {
     demucsInstall: demucs
       ? { status: "ready", progress: 100, message: "清晰分离组件已就绪" }
       : demucsInstallState,
+    ai: toPublicAiSettings(aiSettings),
     access: process.env.HOST === "0.0.0.0" ? "lan" : "local",
   });
+});
+
+app.get("/api/settings/ai", async (_request, response) => {
+  response.json(toPublicAiSettings(await loadAiSettings(settingsRoot)));
+});
+
+app.put("/api/settings/ai", async (request, response) => {
+  try {
+    const settings = await saveAiSettings(settingsRoot, request.body);
+    response.json(toPublicAiSettings(settings));
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
 });
 
 app.post("/api/runtime/demucs/install", async (_request, response) => {
@@ -131,6 +155,7 @@ app.post("/api/projects", upload.single("video"), async (request, response) => {
       sourcePath: request.file.path,
       media,
       createdAt: new Date().toISOString(),
+      job: { status: "idle", progress: 0, message: "" },
     };
     projects.set(id, project);
     response.json(toPublicProject(project));
@@ -141,6 +166,109 @@ app.post("/api/projects", upload.single("video"), async (request, response) => {
       detail: error.message,
     });
   }
+});
+
+app.get("/api/projects/:id/status", (request, response) => {
+  const project = projects.get(request.params.id);
+  if (!project) {
+    response.status(404).json({ error: "项目已失效，请重新选择视频。" });
+    return;
+  }
+  response.json({
+    ...project.job,
+    ...(project.outputPath
+      ? {
+          outputName: project.outputName,
+          processing: project.processing,
+          downloadUrl: `/api/projects/${project.id}/download`,
+        }
+      : {}),
+  });
+});
+
+app.post("/api/projects/:id/generate", async (request, response) => {
+  const project = projects.get(request.params.id);
+  if (!project) {
+    response.status(404).json({ error: "项目已失效，请重新选择视频。" });
+    return;
+  }
+  if (project.media.audioTracks.length === 0) {
+    response.status(400).json({ error: "视频中没有可识别的原始音轨。" });
+    return;
+  }
+  if (project.job.status === "processing") {
+    response.status(202).json(project.job);
+    return;
+  }
+
+  const settings = await loadAiSettings(settingsRoot);
+  if (!settings.apiKey) {
+    response.status(400).json({ error: "请先连接云端 AI 服务。" });
+    return;
+  }
+
+  const mixMode = request.body.mixMode === "quick" ? "quick" : "separate";
+  const allowedVoices = new Set(["coral", "alloy", "sage", "verse"]);
+  const voice = allowedVoices.has(request.body.voice)
+    ? request.body.voice
+    : "coral";
+  const projectWorkDir = path.join(workDir, project.id);
+
+  project.job = {
+    status: "processing",
+    progress: 1,
+    message: "正在准备自动配音",
+  };
+  project.jobPromise = (async () => {
+    try {
+      await fs.mkdir(projectWorkDir, { recursive: true });
+      const generated = await generateCloudDub({
+        videoPath: project.sourcePath,
+        workDir: path.join(projectWorkDir, "generated"),
+        duration: project.media.duration,
+        settings,
+        voice,
+        onProgress(progress, message) {
+          project.job = { status: "processing", progress, message };
+        },
+      });
+
+      project.job = {
+        status: "processing",
+        progress: 90,
+        message:
+          mixMode === "separate" ? "正在分离背景声音" : "正在混合背景声音",
+      };
+      await packageProject({
+        project,
+        audioPath: generated.audioPath,
+        subtitlePath: generated.subtitlePath,
+        mixMode,
+        outputSuffix: "中文AI配音双音轨",
+      });
+      project.generation = {
+        sourceLanguage: generated.language,
+        segmentCount: generated.segmentCount,
+      };
+      project.job = {
+        status: "ready",
+        progress: 100,
+        message: "中文配音视频已生成",
+      };
+    } catch (error) {
+      console.error("自动配音失败", error);
+      project.job = {
+        status: "failed",
+        progress: 0,
+        message: cloudErrorMessage(error),
+      };
+    } finally {
+      await fs.rm(projectWorkDir, { recursive: true, force: true });
+      project.jobPromise = null;
+    }
+  })();
+
+  response.status(202).json(project.job);
 });
 
 app.post(
@@ -157,57 +285,18 @@ app.post(
       return;
     }
 
-    const stem = path
-      .parse(project.originalName)
-      .name.replace(/[^\p{L}\p{N}._-]+/gu, "_")
-      .slice(0, 80);
-    const outputName = `${stem}.中文配音双音轨.mkv`;
-    const outputPath = path.join(outputDir, `${project.id}-${outputName}`);
     const projectWorkDir = path.join(workDir, project.id);
     const mixMode = request.body.mixMode === "quick" ? "quick" : "separate";
 
     try {
-      let processing = "voice-only";
-      if (project.media.audioTracks.length === 0) {
-        await muxDubbedTrack({
-          videoPath: project.sourcePath,
-          audioPath: request.file.path,
-          outputPath,
-          originalAudioTracks: 0,
-          duration: project.media.duration,
-        });
-      } else if (mixMode === "separate") {
-        const extractedAudioPath = path.join(projectWorkDir, "original.wav");
-        await fs.mkdir(projectWorkDir, { recursive: true });
-        await extractPrimaryAudio(project.sourcePath, extractedAudioPath);
-        const backgroundPath = await separateBackground(
-          extractedAudioPath,
-          path.join(projectWorkDir, "separated"),
-        );
-        await muxMixedDubbedTrack({
-          videoPath: project.sourcePath,
-          audioPath: request.file.path,
-          backgroundPath,
-          outputPath,
-          originalAudioTracks: project.media.audioTracks.length,
-          duration: project.media.duration,
-        });
-        processing = "demucs";
-      } else {
-        await muxMixedDubbedTrack({
-          videoPath: project.sourcePath,
-          audioPath: request.file.path,
-          outputPath,
-          originalAudioTracks: project.media.audioTracks.length,
-          duration: project.media.duration,
-        });
-        processing = "quick";
-      }
+      await packageProject({
+        project,
+        audioPath: request.file.path,
+        mixMode,
+        outputSuffix: "中文配音双音轨",
+      });
       await fs.unlink(request.file.path).catch(() => {});
       await fs.rm(projectWorkDir, { recursive: true, force: true });
-      project.outputName = outputName;
-      project.outputPath = outputPath;
-      project.processing = processing;
       response.json({
         ...toPublicProject(project),
         downloadUrl: `/api/projects/${project.id}/download`,
@@ -247,7 +336,70 @@ function toPublicProject(project) {
     createdAt: project.createdAt,
     outputName: project.outputName,
     processing: project.processing,
+    job: project.job,
   };
+}
+
+async function packageProject({
+  project,
+  audioPath,
+  subtitlePath,
+  mixMode,
+  outputSuffix,
+}) {
+  const stem = path
+    .parse(project.originalName)
+    .name.replace(/[^\p{L}\p{N}._-]+/gu, "_")
+    .slice(0, 80);
+  const outputName = `${stem}.${outputSuffix}.mkv`;
+  const outputPath = path.join(outputDir, `${project.id}-${outputName}`);
+  const projectWorkDir = path.join(workDir, project.id);
+  const common = {
+    videoPath: project.sourcePath,
+    audioPath,
+    subtitlePath,
+    outputPath,
+    originalAudioTracks: project.media.audioTracks.length,
+    originalSubtitleTracks: project.media.subtitleTracks.length,
+    duration: project.media.duration,
+  };
+
+  let processing = "voice-only";
+  if (project.media.audioTracks.length === 0) {
+    await muxDubbedTrack(common);
+  } else if (mixMode === "separate") {
+    if (!(await isDemucsAvailable())) {
+      throw new Error("清晰分离组件尚未准备好。");
+    }
+    const extractedAudioPath = path.join(projectWorkDir, "original.wav");
+    await fs.mkdir(projectWorkDir, { recursive: true });
+    await extractPrimaryAudio(project.sourcePath, extractedAudioPath);
+    const backgroundPath = await separateBackground(
+      extractedAudioPath,
+      path.join(projectWorkDir, "separated"),
+    );
+    await muxMixedDubbedTrack({ ...common, backgroundPath });
+    processing = subtitlePath ? "demucs-ai" : "demucs";
+  } else {
+    await muxMixedDubbedTrack(common);
+    processing = subtitlePath ? "quick-ai" : "quick";
+  }
+
+  project.outputName = outputName;
+  project.outputPath = outputPath;
+  project.processing = processing;
+}
+
+function cloudErrorMessage(error) {
+  const message = String(error?.message || "");
+  if (/\b401\b|api key|unauthorized|authentication/i.test(message)) {
+    return "AI 服务认证失败，请检查 API Key。";
+  }
+  if (/fetch failed|ENOTFOUND|ECONN|network/i.test(message)) {
+    return "无法连接 AI 服务，请检查网络或服务地址。";
+  }
+  if (/清晰分离组件/.test(message)) return message;
+  return `自动配音失败：${message.slice(0, 180) || "请稍后重试。"}`;
 }
 
 export async function startServer({
