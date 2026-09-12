@@ -63,7 +63,7 @@ export async function extractPrimaryAudio(videoPath, audioPath) {
 }
 
 export function getSeparatedBackgroundPath(workDir) {
-  return path.join(workDir, "htdemucs", "no_vocals.wav");
+  return path.join(workDir, "htdemucs", "no_vocals.mp3");
 }
 
 function getDemucsEnvironment(runtime) {
@@ -98,6 +98,9 @@ export async function separateBackground(audioPath, workDir) {
     "vocals",
     "--shifts",
     "0",
+    "--mp3",
+    "--mp3-bitrate",
+    "320",
     "-d",
     process.env.DEMUCS_DEVICE || "cpu",
     "-o",
