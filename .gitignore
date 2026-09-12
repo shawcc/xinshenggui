@@ -1,0 +1,15 @@
+node_modules/
+.venv-demucs/
+storage/uploads/
+storage/outputs/
+storage/work/
+storage/test-fixture.mkv
+storage/test-dub.wav
+storage/test-demucs-input.wav
+storage/test-demucs-work/
+storage/test-mixed-output.mkv
+storage/test-output.mkv
+screenshots/
+dist/
+core.*
+npm-debug.log*

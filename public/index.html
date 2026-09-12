@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="为视频制作、混音并封装可切换的中文音轨。"
+    />
+    <title>新声轨</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="新声轨首页">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          <span>新声轨</span>
+        </a>
+        <span class="local-badge" id="access-badge" title="服务默认只允许这台电脑访问">仅本机</span>
+      </header>
+
+      <main>
+        <section class="intro">
+          <p class="eyebrow">给视频加上一条新的声音</p>
+          <h1>画面保持不动，<br />声音换成你想要的版本。</h1>
+          <p class="intro-copy">
+            保留画面质量、原音轨和字幕；把配音与背景声混合后，
+            封装成可以切换播放的 MKV。
+          </p>
+        </section>
+
+        <ol class="stepper" aria-label="制作进度">
+          <li class="is-active" data-step-indicator="1">
+            <span>01</span><strong>选择视频</strong>
+          </li>
+          <li data-step-indicator="2">
+            <span>02</span><strong>音轨设置</strong>
+          </li>
+          <li data-step-indicator="3">
+            <span>03</span><strong>封装音轨</strong>
+          </li>
+        </ol>
+
+        <section class="workspace" aria-live="polite">
+          <form id="video-form" class="panel upload-panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">第一步</p>
+                <h2>选择视频</h2>
+              </div>
+              <span class="privacy-note">文件仅在这台设备处理</span>
+            </div>
+
+            <label class="dropzone" id="video-dropzone">
+              <input id="video-input" type="file" accept="video/*,.mkv" />
+              <span class="drop-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                </svg>
+              </span>
+              <strong>拖入一个视频</strong>
+              <span>或点击选择 MKV、MP4、MOV</span>
+            </label>
+
+            <div class="file-row" id="video-file-row" hidden>
+              <div class="file-symbol" aria-hidden="true">▶</div>
+              <div class="file-copy">
+                <strong id="video-file-name"></strong>
+                <span id="video-file-size"></span>
+              </div>
+              <button class="icon-button" id="clear-video" type="button" title="移除视频" aria-label="移除视频">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+
+            <button class="primary-button" id="analyze-button" type="submit" disabled>
+              <span>读取视频</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
+            </button>
+          </form>
+
+          <form id="package-form" class="panel settings-panel" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">第二步</p>
+                <h2>添加配音音轨</h2>
+              </div>
+              <button class="text-button" id="change-video" type="button">更换视频</button>
+            </div>
+
+            <div class="media-summary">
+              <div class="media-art" aria-hidden="true">
+                <span>EN</span><i></i><span>中</span>
+              </div>
+              <div>
+                <strong id="summary-name"></strong>
+                <p id="summary-meta"></p>
+              </div>
+            </div>
+
+            <fieldset>
+              <legend>背景声音处理</legend>
+              <div class="choice-list">
+                <label class="choice" id="demucs-choice">
+                  <input type="radio" name="mixMode" value="separate" checked />
+                  <span class="choice-copy">
+                    <strong>清晰分离 <i class="choice-badge">本地 AI</i></strong>
+                    <small>Demucs 去掉英文对白，保留音乐和环境声</small>
+                  </span>
+                  <span class="radio-mark"></span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="mixMode" value="quick" />
+                  <span class="choice-copy">
+                    <strong>快速混音</strong>
+                    <small>直接压低英语原声，速度快但仍会隐约听见对白</small>
+                  </span>
+                  <span class="radio-mark"></span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="provider-note" id="runtime-note">
+              <span class="note-mark">AI</span>
+              <p><strong>正在检查本地处理环境</strong><br /><span id="runtime-detail">清晰分离全程在这台电脑完成，不上传视频。</span></p>
+            </div>
+
+            <label class="audio-picker">
+              <input id="audio-input" type="file" accept="audio/*,.m4a,.aac,.mp3,.wav,.flac" />
+              <span>
+                <strong id="audio-label">选择配音文件</strong>
+                <small>AAC、MP3、M4A、WAV</small>
+              </span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
+            </label>
+
+            <button class="primary-button" id="package-button" type="submit" disabled>
+              <span>混音并生成 MKV</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
+            </button>
+          </form>
+
+          <section id="success-panel" class="panel success-panel" hidden>
+            <span class="success-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>
+            </span>
+            <p class="section-kicker">已经准备好</p>
+              <h2>新音轨已经装进去了</h2>
+            <p id="output-name"></p>
+            <p class="processing-result" id="processing-result"></p>
+            <a class="primary-button" id="download-button" href="#">
+              <span>下载双音轨视频</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
+            </a>
+            <div class="next-step">
+              <span>接下来</span>
+              <p>文件已保存到“视频/新声轨”目录，可放回你的媒体库并切换到“中文配音”音轨。</p>
+            </div>
+            <button class="text-button" id="restart-button" type="button">再做一集</button>
+          </section>
+        </section>
+      </main>
+
+      <div class="toast" id="toast" role="status" hidden></div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+{
+  "name": "xinshenggui",
+  "version": "0.1.0",
+  "description": "本地视频音轨制作与封装工具",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "node --watch server.mjs",
+    "start": "node server.mjs",
+    "desktop:dev": "electron .",
+    "desktop:package": "electron-builder --dir",
+    "desktop:mac": "electron-builder --mac dmg",
+    "desktop:win": "electron-builder --win nsis",
+    "setup:demucs": "node scripts/setup-demucs.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "multer": "^2.0.2"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.shawcc.xinshenggui",
+    "productName": "新声轨",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/ffprobe-static/**"
+    ],
+    "extraResources": [
+      {
+        "from": ".venv-demucs",
+        "to": ".venv-demucs",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "files": [
+      "!storage/**",
+      "!screenshots/**",
+      "!**/*.test.mjs"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.video"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
