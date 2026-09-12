@@ -38,7 +38,8 @@ export function run(command, args, options = {}) {
         resolve({ stdout, stderr });
         return;
       }
-      reject(new Error(`${resolvedCommand} exited with ${code}\n${stderr}`));
+      const output = [stdout, stderr].filter(Boolean).join("\n");
+      reject(new Error(`${resolvedCommand} exited with ${code}\n${output}`));
     });
   });
 }
