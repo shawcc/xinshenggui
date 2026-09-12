@@ -8,6 +8,12 @@ import ffprobeStatic from "ffprobe-static";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 
+function getExecutablePath(binaryPath) {
+  return app.isPackaged
+    ? binaryPath.replace("app.asar", "app.asar.unpacked")
+    : binaryPath;
+}
+
 let server;
 
 function createWindow(port) {
@@ -36,8 +42,8 @@ app.whenReady().then(async () => {
   const dataPath = app.getPath("userData");
   process.env.APP_DATA_PATH = dataPath;
   process.env.DEMUCS_ROOT = app.isPackaged ? process.resourcesPath : projectRoot;
-  process.env.FFMPEG_PATH = ffmpegPath;
-  process.env.FFPROBE_PATH = ffprobeStatic.path;
+  process.env.FFMPEG_PATH = getExecutablePath(ffmpegPath);
+  process.env.FFPROBE_PATH = getExecutablePath(ffprobeStatic.path);
 
   const { startServer } = await import("../server.mjs");
   const started = await startServer({ host: "127.0.0.1", port: 0 });

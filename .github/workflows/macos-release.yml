@@ -67,7 +67,12 @@ jobs:
           mv "$RUNNER_TEMP/demucs-bundle"/.venv-demucs .
 
       - name: Build DMG
-        run: pnpm exec electron-builder --mac dmg --${{ matrix.arch }} --publish never
+        run: |
+          if [[ -z "${CSC_LINK:-}" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          pnpm exec electron-builder --mac dmg --${{ matrix.arch }} --publish never
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

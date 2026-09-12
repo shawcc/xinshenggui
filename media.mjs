@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 
-function getFfmpegBin() {
+export function getFfmpegBin() {
   return process.env.FFMPEG_PATH || ffmpegPath || "ffmpeg";
 }
 

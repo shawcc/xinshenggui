@@ -2,7 +2,7 @@ import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { run } from "./media.mjs";
+import { getFfmpegBin, run } from "./media.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const demucsRoot = process.env.DEMUCS_ROOT || __dirname;
@@ -66,6 +66,20 @@ export function getSeparatedBackgroundPath(workDir) {
   return path.join(workDir, "htdemucs", "no_vocals.wav");
 }
 
+function getDemucsEnvironment(runtime) {
+  const ffmpegDir = path.dirname(getFfmpegBin());
+  return {
+    ...process.env,
+    ...(runtime
+      ? {
+          PYTHONHOME: runtime.pythonHome,
+          PYTHONPATH: runtime.sitePackages,
+        }
+      : {}),
+    PATH: [ffmpegDir, process.env.PATH].filter(Boolean).join(path.delimiter),
+  };
+}
+
 export async function separateBackground(audioPath, workDir) {
   if (!(await isDemucsAvailable())) {
     throw new Error("清晰分离组件尚未准备好，请改用快速混音。");
@@ -89,13 +103,7 @@ export async function separateBackground(audioPath, workDir) {
     "{stem}.{ext}",
     audioPath,
   ], {
-    env: runtime
-      ? {
-          ...process.env,
-          PYTHONHOME: runtime.pythonHome,
-          PYTHONPATH: runtime.sitePackages,
-        }
-      : process.env,
+    env: getDemucsEnvironment(runtime),
   });
 
   const backgroundPath = getSeparatedBackgroundPath(workDir);
