@@ -42,7 +42,7 @@ before(async () => {
       'cp "$MOCK_VIDEO_SOURCE" "$PWD/source.mkv"',
       "printf 'title=Test video\\n'",
       "printf 'progress=54.0%%\\n'",
-      "printf 'filepath=%s/source.mkv\\n' \"$PWD\"",
+      "printf 'filepath=%s/source.mkv\\n' \"$(pwd -P)\"",
       "",
     ].join("\n"),
     { mode: 0o755 },
@@ -92,4 +92,19 @@ test("downloads a video through the on-demand downloader", async () => {
   assert.equal(result.title, "Test video");
   assert.equal(result.path, path.join(outputDir, "source.mkv"));
   assert.deepEqual(progress, [54, 100]);
+});
+
+test("accepts a canonical downloader path for a symlinked output directory", async () => {
+  const realOutputDir = path.join(root, "real-download");
+  const outputDir = path.join(root, "linked-download");
+  await fs.mkdir(realOutputDir);
+  await fs.symlink(realOutputDir, outputDir, "dir");
+
+  const result = await downloadYouTubeVideo({
+    url: "https://youtu.be/BaW_jenozKc",
+    outputDir,
+    uvBin: mockDownloader,
+  });
+
+  assert.equal(result.path, path.join(outputDir, "source.mkv"));
 });

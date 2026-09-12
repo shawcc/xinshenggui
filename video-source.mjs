@@ -107,15 +107,25 @@ export async function downloadYouTubeVideo({
     throw new Error("YouTube 下载完成，但未找到视频文件。");
   }
   const resolvedOutput = path.resolve(downloadedPath);
-  if (!resolvedOutput.startsWith(`${path.resolve(outputDir)}${path.sep}`)) {
+  await fs.access(resolvedOutput);
+  const [realOutputDir, realOutput] = await Promise.all([
+    fs.realpath(outputDir),
+    fs.realpath(resolvedOutput),
+  ]);
+  const relativeOutput = path.relative(realOutputDir, realOutput);
+  if (
+    relativeOutput === ".." ||
+    relativeOutput.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeOutput)
+  ) {
     throw new Error("下载器返回了无效的视频路径。");
   }
-  await fs.access(resolvedOutput);
+  const safeOutput = path.resolve(outputDir, relativeOutput);
   onProgress(100);
 
   return {
-    path: resolvedOutput,
-    title: titleLine?.slice("title=".length).trim() || path.basename(resolvedOutput),
+    path: safeOutput,
+    title: titleLine?.slice("title=".length).trim() || path.basename(safeOutput),
   };
 }
 
