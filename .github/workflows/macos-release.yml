@@ -34,7 +34,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
@@ -47,27 +46,28 @@ jobs:
 
       - name: Install application and audio dependencies
         run: |
-          npm install --global npm@10.9.4
-          npm --version
-          npm ci --ignore-scripts
+          corepack enable
+          corepack prepare pnpm@10.5.2 --activate
+          pnpm --version
+          pnpm install --frozen-lockfile --ignore-scripts
           node node_modules/electron/install.js
           node node_modules/ffmpeg-static/install.js
-          npm run setup:demucs
+          pnpm run setup:demucs
 
       - name: Verify media processing and first-run model download
-        run: RUN_DEMUCS_TEST=1 npm test
+        run: RUN_DEMUCS_TEST=1 pnpm test
 
       - name: Verify the bundled Demucs runtime is relocatable
         run: |
           mkdir "$RUNNER_TEMP/demucs-bundle"
           mv .demucs-runtime.json .python-demucs .venv-demucs "$RUNNER_TEMP/demucs-bundle/"
-          DEMUCS_ROOT="$RUNNER_TEMP/demucs-bundle" RUN_DEMUCS_TEST=1 npm test
+          DEMUCS_ROOT="$RUNNER_TEMP/demucs-bundle" RUN_DEMUCS_TEST=1 pnpm test
           mv "$RUNNER_TEMP/demucs-bundle"/.demucs-runtime.json .
           mv "$RUNNER_TEMP/demucs-bundle"/.python-demucs .
           mv "$RUNNER_TEMP/demucs-bundle"/.venv-demucs .
 
       - name: Build DMG
-        run: npm run desktop:mac -- --${{ matrix.arch }}
+        run: pnpm run desktop:mac -- --${{ matrix.arch }}
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

@@ -10,9 +10,16 @@ function getFfprobeBin() {
   return process.env.FFPROBE_PATH || ffprobeStatic.path || "ffprobe";
 }
 
+function resolveCommand(command) {
+  if (command === "ffmpeg") return getFfmpegBin();
+  if (command === "ffprobe") return getFfprobeBin();
+  return command;
+}
+
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const resolvedCommand = resolveCommand(command);
+    const child = spawn(resolvedCommand, args, {
       ...options,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -31,7 +38,7 @@ export function run(command, args, options = {}) {
         resolve({ stdout, stderr });
         return;
       }
-      reject(new Error(`${command} exited with ${code}\n${stderr}`));
+      reject(new Error(`${resolvedCommand} exited with ${code}\n${stderr}`));
     });
   });
 }

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "本地视频音轨制作与封装工具",
   "private": true,
+  "packageManager": "pnpm@10.5.2",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
