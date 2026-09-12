@@ -40,6 +40,17 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": ".python-demucs",
+        "to": ".python-demucs",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".demucs-runtime.json",
+        "to": ".demucs-runtime.json"
       }
     ],
     "files": [

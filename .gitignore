@@ -1,6 +1,8 @@
 node_modules/
 .trae/
 .uploads/
+.demucs-runtime.json
+.python-demucs/
 .venv-demucs/
 storage/uploads/
 storage/outputs/

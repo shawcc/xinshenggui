@@ -1,3 +1,4 @@
+import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,22 +6,38 @@ import { run } from "./media.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const demucsRoot = process.env.DEMUCS_ROOT || __dirname;
-const demucsBinDirectory = process.platform === "win32" ? "Scripts" : "bin";
-const demucsExecutable = process.platform === "win32" ? "demucs.exe" : "demucs";
-const defaultDemucsBin = path.join(
-  demucsRoot,
-  ".venv-demucs",
-  demucsBinDirectory,
-  demucsExecutable,
-);
+
+function getBundledRuntime() {
+  const manifest = JSON.parse(
+    syncFs.readFileSync(
+      path.join(demucsRoot, ".demucs-runtime.json"),
+      "utf8",
+    ),
+  );
+  const python = path.join(demucsRoot, manifest.python);
+  return {
+    python,
+    sitePackages: path.join(demucsRoot, manifest.sitePackages),
+    pythonHome: path.dirname(path.dirname(python)),
+  };
+}
 
 export function getDemucsBin() {
-  return process.env.DEMUCS_BIN || defaultDemucsBin;
+  if (process.env.DEMUCS_BIN) return process.env.DEMUCS_BIN;
+  return getBundledRuntime().python;
 }
 
 export async function isDemucsAvailable() {
   try {
-    await fs.access(getDemucsBin());
+    if (process.env.DEMUCS_BIN) {
+      await fs.access(process.env.DEMUCS_BIN);
+      return true;
+    }
+    const runtime = getBundledRuntime();
+    await Promise.all([
+      fs.access(runtime.python),
+      fs.access(path.join(runtime.sitePackages, "demucs")),
+    ]);
     return true;
   } catch {
     return false;
@@ -55,7 +72,9 @@ export async function separateBackground(audioPath, workDir) {
   }
 
   await fs.mkdir(workDir, { recursive: true });
+  const runtime = process.env.DEMUCS_BIN ? null : getBundledRuntime();
   await run(getDemucsBin(), [
+    ...(runtime ? ["-m", "demucs"] : []),
     "-n",
     "htdemucs",
     "--two-stems",
@@ -71,7 +90,15 @@ export async function separateBackground(audioPath, workDir) {
     "--filename",
     "{stem}.{ext}",
     audioPath,
-  ]);
+  ], {
+    env: runtime
+      ? {
+          ...process.env,
+          PYTHONHOME: runtime.pythonHome,
+          PYTHONPATH: runtime.sitePackages,
+        }
+      : process.env,
+  });
 
   const backgroundPath = getSeparatedBackgroundPath(workDir);
   await fs.access(backgroundPath);
