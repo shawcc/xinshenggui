@@ -1,11 +1,24 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+export const AI_PROVIDER_PRESETS = {
+  siliconflow: {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    transcriptionModel: "FunAudioLLM/SenseVoiceSmall",
+    translationModel: "Qwen/Qwen3.5-35B-A3B",
+    speechModel: "FunAudioLLM/CosyVoice2-0.5B",
+  },
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    transcriptionModel: "whisper-1",
+    translationModel: "gpt-4.1-mini",
+    speechModel: "gpt-4o-mini-tts",
+  },
+};
+
 export const DEFAULT_AI_SETTINGS = {
-  baseUrl: "https://api.openai.com/v1",
-  transcriptionModel: "whisper-1",
-  translationModel: "gpt-4.1-mini",
-  speechModel: "gpt-4o-mini-tts",
+  provider: "siliconflow",
+  ...AI_PROVIDER_PRESETS.siliconflow,
 };
 
 function settingsPath(root) {
@@ -37,6 +50,14 @@ export async function loadAiSettings(root) {
   return {
     ...DEFAULT_AI_SETTINGS,
     ...saved,
+    provider:
+      process.env.AI_PROVIDER ||
+      saved.provider ||
+      (saved.baseUrl
+        ? saved.baseUrl.includes("siliconflow")
+          ? "siliconflow"
+          : "openai"
+        : DEFAULT_AI_SETTINGS.provider),
     apiKey: process.env.OPENAI_API_KEY || saved.apiKey || "",
     baseUrl: normalizeBaseUrl(process.env.OPENAI_BASE_URL || saved.baseUrl),
   };
@@ -44,20 +65,26 @@ export async function loadAiSettings(root) {
 
 export async function saveAiSettings(root, input) {
   const current = await loadAiSettings(root);
+  const provider = ["siliconflow", "openai", "custom"].includes(input.provider)
+    ? input.provider
+    : current.provider;
+  const preset = AI_PROVIDER_PRESETS[provider] || current;
+  const submittedKey = String(input.apiKey || "").trim();
   const next = {
-    baseUrl: normalizeBaseUrl(input.baseUrl || current.baseUrl),
-    apiKey: String(input.apiKey || current.apiKey).trim(),
+    provider,
+    baseUrl: normalizeBaseUrl(input.baseUrl || preset.baseUrl),
+    apiKey: submittedKey || (provider === current.provider ? current.apiKey : ""),
     transcriptionModel: String(
-      input.transcriptionModel || current.transcriptionModel,
+      input.transcriptionModel || preset.transcriptionModel,
     ).trim(),
     translationModel: String(
-      input.translationModel || current.translationModel,
+      input.translationModel || preset.translationModel,
     ).trim(),
-    speechModel: String(input.speechModel || current.speechModel).trim(),
+    speechModel: String(input.speechModel || preset.speechModel).trim(),
   };
 
   if (!next.apiKey) {
-    throw new Error("请输入 AI 服务 API Key。");
+    throw new Error("切换 AI 服务时，请输入对应的 API Key。");
   }
 
   await fs.mkdir(root, { recursive: true });
@@ -73,6 +100,7 @@ export async function saveAiSettings(root, input) {
 export function toPublicAiSettings(settings) {
   return {
     configured: Boolean(settings.apiKey),
+    provider: settings.provider,
     baseUrl: settings.baseUrl,
     transcriptionModel: settings.transcriptionModel,
     translationModel: settings.translationModel,

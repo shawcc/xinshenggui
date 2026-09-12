@@ -2,9 +2,22 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { probeMedia, run } from "./media.mjs";
 
-const CHUNK_SECONDS = 20 * 60;
 const TRANSLATION_BATCH_SIZE = 36;
 const TTS_CONCURRENCY = 3;
+const VOICES = {
+  siliconflow: {
+    warm: "FunAudioLLM/CosyVoice2-0.5B:claire",
+    neutral: "FunAudioLLM/CosyVoice2-0.5B:anna",
+    steady: "FunAudioLLM/CosyVoice2-0.5B:alex",
+    bright: "FunAudioLLM/CosyVoice2-0.5B:diana",
+  },
+  openai: {
+    warm: "coral",
+    neutral: "alloy",
+    steady: "sage",
+    bright: "verse",
+  },
+};
 
 function endpoint(settings, pathname) {
   return `${settings.baseUrl.replace(/\/+$/, "")}${pathname}`;
@@ -35,7 +48,16 @@ function authHeaders(settings, extra = {}) {
   };
 }
 
-export async function extractSpeechChunks(videoPath, outputDir) {
+export function resolveVoice(provider, style) {
+  const voices = VOICES[provider] || VOICES.openai;
+  return voices[style] || voices.warm;
+}
+
+export async function extractSpeechChunks(
+  videoPath,
+  outputDir,
+  chunkSeconds = 20 * 60,
+) {
   await fs.mkdir(outputDir, { recursive: true });
   const pattern = path.join(outputDir, "speech-%03d.mp3");
   await run("ffmpeg", [
@@ -54,7 +76,7 @@ export async function extractSpeechChunks(videoPath, outputDir) {
     "-f",
     "segment",
     "-segment_time",
-    String(CHUNK_SECONDS),
+    String(chunkSeconds),
     "-reset_timestamps",
     "1",
     pattern,
@@ -70,18 +92,22 @@ export async function extractSpeechChunks(videoPath, outputDir) {
 }
 
 export function normalizeTranscriptionSegments(data, offset, duration) {
+  const cleanText = (value) =>
+    String(value || "")
+      .replace(/<\|[^|>]+\|>/g, "")
+      .trim();
   if (Array.isArray(data.segments) && data.segments.length > 0) {
     return data.segments
-      .filter((segment) => String(segment.text || "").trim())
+      .filter((segment) => cleanText(segment.text))
       .map((segment, index) => ({
         id: `${offset}-${segment.id ?? index}`,
         start: offset + Math.max(0, Number(segment.start || 0)),
         end: offset + Math.max(Number(segment.end || 0), Number(segment.start || 0) + 0.2),
-        source: String(segment.text).trim(),
+        source: cleanText(segment.text),
       }));
   }
 
-  const text = String(data.text || "").trim();
+  const text = cleanText(data.text);
   return text
     ? [{ id: `${offset}-0`, start: offset, end: offset + duration, source: text }]
     : [];
@@ -91,8 +117,10 @@ async function transcribeChunk(filePath, offset, settings) {
   const media = await probeMedia(filePath);
   const body = new FormData();
   body.append("model", settings.transcriptionModel);
-  body.append("response_format", "verbose_json");
-  body.append("timestamp_granularities[]", "segment");
+  if (settings.provider !== "siliconflow") {
+    body.append("response_format", "verbose_json");
+    body.append("timestamp_granularities[]", "segment");
+  }
   body.append(
     "file",
     new Blob([await fs.readFile(filePath)], { type: "audio/mpeg" }),
@@ -121,7 +149,8 @@ export async function transcribeVideo({
   settings,
   onProgress = () => {},
 }) {
-  const chunks = await extractSpeechChunks(videoPath, workDir);
+  const chunkSeconds = settings.provider === "siliconflow" ? 15 : 20 * 60;
+  const chunks = await extractSpeechChunks(videoPath, workDir, chunkSeconds);
   const segments = [];
   let language = "auto";
   let offset = 0;
@@ -141,7 +170,9 @@ export async function transcribeVideo({
 }
 
 function parseTranslationResponse(data) {
-  const content = data.choices?.[0]?.message?.content;
+  const content = data.choices?.[0]?.message?.content
+    ?.replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
   if (!content) throw new Error("翻译服务没有返回内容。");
   const parsed = JSON.parse(content);
   if (!Array.isArray(parsed.translations)) {
@@ -159,7 +190,9 @@ async function translateBatch(batch, settings) {
   const payload = {
     model: settings.translationModel,
     temperature: 0.2,
-    response_format: { type: "json_object" },
+    ...(settings.provider === "openai"
+      ? { response_format: { type: "json_object" } }
+      : {}),
     messages: [
       {
         role: "system",

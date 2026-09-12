@@ -19,7 +19,15 @@
           </span>
           <span>新声轨</span>
         </a>
-        <span class="local-badge" id="access-badge" title="服务默认只允许这台电脑访问">仅本机</span>
+        <div class="topbar-actions">
+          <span class="local-badge" id="access-badge" title="服务默认只允许这台电脑访问">仅本机</span>
+          <button class="settings-button" id="open-settings" type="button" title="AI 服务设置" aria-label="AI 服务设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.58 15 1.7 1.7 0 0 0 3 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.95a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.58 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15.05 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.42 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <main>
@@ -54,26 +62,57 @@
               <span class="privacy-note">文件仅在这台设备处理</span>
             </div>
 
-            <label class="dropzone" id="video-dropzone">
-              <input id="video-input" type="file" accept="video/*,.mkv" />
-              <span class="drop-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
-                </svg>
-              </span>
-              <strong>拖入一个视频</strong>
-              <span>或点击选择 MKV、MP4、MOV</span>
-            </label>
+            <div class="segmented source-options" role="group" aria-label="视频来源">
+              <label>
+                <input type="radio" name="sourceType" value="file" checked />
+                <span>本地视频</span>
+              </label>
+              <label>
+                <input type="radio" name="sourceType" value="youtube" />
+                <span>YouTube 链接</span>
+              </label>
+            </div>
 
-            <div class="file-row" id="video-file-row" hidden>
-              <div class="file-symbol" aria-hidden="true">▶</div>
-              <div class="file-copy">
-                <strong id="video-file-name"></strong>
-                <span id="video-file-size"></span>
+            <div id="file-source">
+              <label class="dropzone" id="video-dropzone">
+                <input id="video-input" type="file" accept="video/*,.mkv" />
+                <span class="drop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                  </svg>
+                </span>
+                <strong>拖入一个视频</strong>
+                <span>或点击选择 MKV、MP4、MOV</span>
+              </label>
+
+              <div class="file-row" id="video-file-row" hidden>
+                <div class="file-symbol" aria-hidden="true">▶</div>
+                <div class="file-copy">
+                  <strong id="video-file-name"></strong>
+                  <span id="video-file-size"></span>
+                </div>
+                <button class="icon-button" id="clear-video" type="button" title="移除视频" aria-label="移除视频">
+                  <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
               </div>
-              <button class="icon-button" id="clear-video" type="button" title="移除视频" aria-label="移除视频">
-                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
-              </button>
+            </div>
+
+            <div class="youtube-source" id="youtube-source" hidden>
+              <label for="youtube-url">YouTube 视频链接</label>
+              <div class="url-input">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1" />
+                </svg>
+                <input id="youtube-url" type="url" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false" />
+              </div>
+              <p>仅支持单个公开可播放的视频，请确保你拥有下载和处理权限。</p>
+              <div class="source-progress" id="source-progress" hidden>
+                <div>
+                  <strong id="source-message">正在下载 YouTube 视频</strong>
+                  <span id="source-percent">0%</span>
+                </div>
+                <progress id="source-progress-bar" max="100" value="0"></progress>
+              </div>
             </div>
 
             <button class="primary-button" id="analyze-button" type="submit" disabled>
@@ -101,40 +140,14 @@
               </div>
             </div>
 
-            <section class="ai-service" id="ai-service">
-              <div class="ai-service-heading">
-                <div>
-                  <span class="service-dot" aria-hidden="true"></span>
-                  <strong id="ai-service-title">连接云端 AI</strong>
-                  <small id="ai-service-detail">用于识别、翻译和生成中文语音</small>
-                </div>
-                <button class="text-button" id="edit-ai-settings" type="button" hidden>更改</button>
+            <div class="ai-service-summary" id="ai-service">
+              <span class="service-dot" aria-hidden="true"></span>
+              <div>
+                <strong id="ai-service-title">尚未配置云端 AI</strong>
+                <small id="ai-service-detail">请先在设置中绑定服务</small>
               </div>
-              <div class="ai-config" id="ai-config">
-                <label>
-                  <span>API Key</span>
-                  <input
-                    id="ai-api-key"
-                    type="password"
-                    autocomplete="off"
-                    placeholder="sk-..."
-                  />
-                </label>
-                <label>
-                  <span>服务地址</span>
-                  <input
-                    id="ai-base-url"
-                    type="url"
-                    value="https://api.openai.com/v1"
-                    spellcheck="false"
-                  />
-                </label>
-                <button class="secondary-button" id="save-ai-settings" type="button">
-                  保存并连接
-                </button>
-                <p>支持 OpenAI API；密钥仅保存在这台电脑。</p>
-              </div>
-            </section>
+              <button class="text-button" id="edit-ai-settings" type="button">设置</button>
+            </div>
 
             <fieldset>
               <legend>中文音色</legend>
@@ -251,6 +264,75 @@
       </main>
 
       <div class="toast" id="toast" role="status" hidden></div>
+
+      <dialog class="settings-dialog" id="settings-dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="section-kicker">全局设置</p>
+            <h2>云端 AI 服务</h2>
+          </div>
+          <button class="icon-button" id="close-settings" type="button" title="关闭设置" aria-label="关闭设置">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+
+        <p class="settings-intro">绑定一次后持续使用。API Key 仅保存在本机，不会写入视频或上传到其他服务。</p>
+
+        <div class="provider-cards" role="radiogroup" aria-label="AI 服务商">
+          <label class="provider-card">
+            <input type="radio" name="aiProvider" value="siliconflow" checked />
+            <span>
+              <strong>硅基流动 <i>推荐</i></strong>
+              <small>国内访问方便，SenseVoice + Qwen + CosyVoice 性价比高</small>
+            </span>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="aiProvider" value="openai" />
+            <span>
+              <strong>OpenAI</strong>
+              <small>时间戳更细，整体效果稳定，需要可用的国际网络</small>
+            </span>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="aiProvider" value="custom" />
+            <span>
+              <strong>兼容服务</strong>
+              <small>使用自定义 OpenAI 兼容地址和模型</small>
+            </span>
+          </label>
+        </div>
+
+        <div class="ai-config" id="ai-config">
+          <label>
+            <span>API Key</span>
+            <input id="ai-api-key" type="password" autocomplete="off" placeholder="sk-..." />
+          </label>
+          <details class="endpoint-settings" id="endpoint-settings">
+            <summary>高级接口设置</summary>
+            <div>
+              <label>
+                <span>服务地址</span>
+                <input id="ai-base-url" type="url" value="https://api.siliconflow.cn/v1" spellcheck="false" />
+              </label>
+              <label>
+                <span>语音识别模型</span>
+                <input id="ai-transcription-model" type="text" spellcheck="false" />
+              </label>
+              <label>
+                <span>翻译模型</span>
+                <input id="ai-translation-model" type="text" spellcheck="false" />
+              </label>
+              <label>
+                <span>语音合成模型</span>
+                <input id="ai-speech-model" type="text" spellcheck="false" />
+              </label>
+            </div>
+          </details>
+          <button class="secondary-button" id="save-ai-settings" type="button">
+            保存设置
+          </button>
+        </div>
+      </dialog>
     </div>
     <script type="module" src="/app.js"></script>
   </body>

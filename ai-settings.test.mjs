@@ -42,3 +42,13 @@ test("rejects insecure remote service URLs", async () => {
     /HTTPS/,
   );
 });
+
+test("requires a new key when switching providers", async () => {
+  await assert.rejects(
+    saveAiSettings(root, {
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+    }),
+    /API Key/,
+  );
+});

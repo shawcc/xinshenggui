@@ -12,11 +12,13 @@ let cloudServer;
 let appServer;
 let cloudBaseUrl;
 let appBaseUrl;
+let mockDownloader;
 
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "xinshenggui-api-"));
   sourcePath = path.join(root, "source.mkv");
   const voicePath = path.join(root, "voice.mp3");
+  mockDownloader = path.join(root, "mock-yt-dlp");
 
   await run("ffmpeg", [
     "-y",
@@ -46,6 +48,18 @@ before(async () => {
     voicePath,
   ]);
   const voice = await fs.readFile(voicePath);
+  await fs.writeFile(
+    mockDownloader,
+    [
+      "#!/bin/sh",
+      'cp "$MOCK_VIDEO_SOURCE" "$PWD/source.mkv"',
+      "printf 'title=Imported video\\n'",
+      "printf 'progress=75.0%%\\n'",
+      "printf 'filepath=%s/source.mkv\\n' \"$PWD\"",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
 
   cloudServer = http.createServer(async (request, response) => {
     let body = Buffer.alloc(0);
@@ -96,6 +110,8 @@ before(async () => {
   cloudBaseUrl = `http://127.0.0.1:${cloudServer.address().port}/v1`;
 
   process.env.APP_DATA_PATH = root;
+  process.env.MOCK_VIDEO_SOURCE = sourcePath;
+  process.env.YTDLP_BIN = mockDownloader;
   const { startServer } = await import("./server.mjs");
   const started = await startServer({ host: "127.0.0.1", port: 0 });
   appServer = started.server;
@@ -103,11 +119,37 @@ before(async () => {
 });
 
 after(async () => {
+  delete process.env.MOCK_VIDEO_SOURCE;
+  delete process.env.YTDLP_BIN;
   await Promise.all([
     new Promise((resolve) => appServer.close(resolve)),
     new Promise((resolve) => cloudServer.close(resolve)),
   ]);
   await fs.rm(root, { recursive: true, force: true });
+});
+
+test("YouTube API imports a public video into a project", async () => {
+  const createResponse = await fetch(`${appBaseUrl}/api/projects/youtube`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "https://youtu.be/BaW_jenozKc" }),
+  });
+  assert.equal(createResponse.status, 202);
+  const sourceImport = await createResponse.json();
+
+  let status;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await fetch(
+      `${appBaseUrl}/api/projects/youtube/${sourceImport.id}/status`,
+    );
+    status = await response.json();
+    if (status.status === "ready" || status.status === "failed") break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  assert.equal(status.status, "ready", status.message);
+  assert.equal(status.project.originalName, "Imported video.mkv");
+  assert.equal(status.project.media.audioTracks.length, 1);
 });
 
 test("automatic API creates a dubbed MKV without an uploaded dub track", async () => {

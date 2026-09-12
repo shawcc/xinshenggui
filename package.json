@@ -1,6 +1,6 @@
 {
   "name": "xinshenggui",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "自动翻译并生成中文配音音轨的桌面工具",
   "private": true,
   "packageManager": "pnpm@10.5.2",

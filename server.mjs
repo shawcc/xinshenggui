@@ -9,7 +9,7 @@ import {
   saveAiSettings,
   toPublicAiSettings,
 } from "./ai-settings.mjs";
-import { generateCloudDub } from "./cloud-dubbing.mjs";
+import { generateCloudDub, resolveVoice } from "./cloud-dubbing.mjs";
 import { muxDubbedTrack, muxMixedDubbedTrack, probeMedia } from "./media.mjs";
 import {
   extractPrimaryAudio,
@@ -17,6 +17,10 @@ import {
   separateBackground,
 } from "./separation.mjs";
 import { setupDemucs } from "./scripts/setup-demucs.mjs";
+import {
+  downloadYouTubeVideo,
+  normalizeYouTubeUrl,
+} from "./video-source.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const demucsRoot = process.env.DEMUCS_ROOT || __dirname;
@@ -40,6 +44,7 @@ const upload = multer({
 });
 const app = express();
 const projects = new Map();
+const sourceImports = new Map();
 const demucsInstallState = {
   status: "idle",
   progress: 0,
@@ -63,6 +68,7 @@ app.get("/api/health", async (_request, response) => {
       ? { status: "ready", progress: 100, message: "清晰分离组件已就绪" }
       : demucsInstallState,
     ai: toPublicAiSettings(aiSettings),
+    youtube: true,
     access: process.env.HOST === "0.0.0.0" ? "lan" : "local",
   });
 });
@@ -148,16 +154,11 @@ app.post("/api/projects", upload.single("video"), async (request, response) => {
       return;
     }
 
-    const id = crypto.randomUUID();
-    const project = {
-      id,
+    const project = createProject({
       originalName: request.file.originalname,
       sourcePath: request.file.path,
       media,
-      createdAt: new Date().toISOString(),
-      job: { status: "idle", progress: 0, message: "" },
-    };
-    projects.set(id, project);
+    });
     response.json(toPublicProject(project));
   } catch (error) {
     await fs.unlink(request.file.path).catch(() => {});
@@ -166,6 +167,93 @@ app.post("/api/projects", upload.single("video"), async (request, response) => {
       detail: error.message,
     });
   }
+});
+
+app.post("/api/projects/youtube", (request, response) => {
+  let url;
+  try {
+    url = normalizeYouTubeUrl(request.body.url);
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+    return;
+  }
+
+  const id = crypto.randomUUID();
+  const importDir = path.join(uploadDir, `youtube-${id}`);
+  const sourceImport = {
+    id,
+    status: "processing",
+    progress: 1,
+    message: "正在准备 YouTube 下载组件",
+  };
+  sourceImports.set(id, sourceImport);
+
+  sourceImport.promise = (async () => {
+    try {
+      const downloaded = await downloadYouTubeVideo({
+        url,
+        outputDir: importDir,
+        uvBin: process.env.UV_PATH || "uv",
+        onProgress(progress) {
+          Object.assign(sourceImport, {
+            progress: Math.max(2, Math.round(progress * 0.86)),
+            message: "正在下载 YouTube 视频",
+          });
+        },
+      });
+      Object.assign(sourceImport, {
+        progress: 92,
+        message: "正在读取视频信息",
+      });
+      const media = await probeMedia(downloaded.path);
+      if (!media.video) throw new Error("下载内容中没有检测到视频轨道。");
+
+      const extension = path.extname(downloaded.path) || ".mkv";
+      const project = createProject({
+        originalName: `${downloaded.title}${extension}`,
+        sourcePath: downloaded.path,
+        media,
+      });
+      Object.assign(sourceImport, {
+        status: "ready",
+        progress: 100,
+        message: "YouTube 视频已准备好",
+        project: toPublicProject(project),
+      });
+    } catch (error) {
+      console.error("YouTube 下载失败", error);
+      Object.assign(sourceImport, {
+        status: "failed",
+        progress: 0,
+        message: youtubeErrorMessage(error),
+      });
+      await fs.rm(importDir, { recursive: true, force: true });
+    } finally {
+      sourceImport.promise = null;
+    }
+  })();
+
+  response.status(202).json({
+    id,
+    status: sourceImport.status,
+    progress: sourceImport.progress,
+    message: sourceImport.message,
+  });
+});
+
+app.get("/api/projects/youtube/:id/status", (request, response) => {
+  const sourceImport = sourceImports.get(request.params.id);
+  if (!sourceImport) {
+    response.status(404).json({ error: "下载任务已失效，请重新提交链接。" });
+    return;
+  }
+  response.json({
+    id: sourceImport.id,
+    status: sourceImport.status,
+    progress: sourceImport.progress,
+    message: sourceImport.message,
+    project: sourceImport.project,
+  });
 });
 
 app.get("/api/projects/:id/status", (request, response) => {
@@ -208,10 +296,7 @@ app.post("/api/projects/:id/generate", async (request, response) => {
   }
 
   const mixMode = request.body.mixMode === "quick" ? "quick" : "separate";
-  const allowedVoices = new Set(["coral", "alloy", "sage", "verse"]);
-  const voice = allowedVoices.has(request.body.voice)
-    ? request.body.voice
-    : "coral";
+  const voice = resolveVoice(settings.provider, request.body.voice);
   const projectWorkDir = path.join(workDir, project.id);
 
   project.job = {
@@ -340,6 +425,20 @@ function toPublicProject(project) {
   };
 }
 
+function createProject({ originalName, sourcePath, media }) {
+  const id = crypto.randomUUID();
+  const project = {
+    id,
+    originalName,
+    sourcePath,
+    media,
+    createdAt: new Date().toISOString(),
+    job: { status: "idle", progress: 0, message: "" },
+  };
+  projects.set(id, project);
+  return project;
+}
+
 async function packageProject({
   project,
   audioPath,
@@ -400,6 +499,20 @@ function cloudErrorMessage(error) {
   }
   if (/清晰分离组件/.test(message)) return message;
   return `自动配音失败：${message.slice(0, 180) || "请稍后重试。"}`;
+}
+
+function youtubeErrorMessage(error) {
+  const message = String(error?.message || "");
+  if (/Sign in|cookies|bot|confirm your age/i.test(message)) {
+    return "这个视频需要登录或验证，目前只能导入公开可播放的视频。";
+  }
+  if (/Private video|Video unavailable|not available/i.test(message)) {
+    return "这个 YouTube 视频不可用或不是公开内容。";
+  }
+  if (/HTTP Error 403|unable to download|network|ECONN|fetch/i.test(message)) {
+    return "YouTube 视频下载失败，请检查网络后重试。";
+  }
+  return `无法导入 YouTube 视频：${message.slice(0, 160)}`;
 }
 
 export async function startServer({

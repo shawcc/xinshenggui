@@ -7,6 +7,7 @@ import {
   buildSrt,
   generateCloudDub,
   normalizeTranscriptionSegments,
+  resolveVoice,
 } from "./cloud-dubbing.mjs";
 import { probeMedia, run } from "./media.mjs";
 
@@ -134,6 +135,14 @@ test("buildSrt creates aligned Simplified Chinese captions", () => {
   ]);
   assert.match(srt, /00:00:01,250 --> 00:00:02,800/);
   assert.match(srt, /你好。/);
+});
+
+test("resolves provider-specific voice names", () => {
+  assert.equal(resolveVoice("openai", "warm"), "coral");
+  assert.equal(
+    resolveVoice("siliconflow", "steady"),
+    "FunAudioLLM/CosyVoice2-0.5B:alex",
+  );
 });
 
 test("cloud dubbing produces an aligned track and subtitle", async () => {
